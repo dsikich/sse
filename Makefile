@@ -11,7 +11,7 @@ debug:
 CFLAGS=-Isrc
 RFLAGS=-Os -DNDEBUG -Wall
 DFLAGS=-g -Wall
-LFLAGS=-lcurl
+LFLAGS=-lcurl -ljansson
 
 ifeq ($(RELEASE),1)
 	CFLAGS:=$(CFLAGS) $(RFLAGS)

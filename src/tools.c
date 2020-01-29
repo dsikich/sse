@@ -4,6 +4,7 @@
  *
  * For more information see https://https://github.com/radiospiel/sse.
  */
+#include <jansson.h>
 #include "sse.h"
 #include "http.h"
 
@@ -88,15 +89,35 @@ void log_sse_event(char** headers, const char* data)
                       event_id ? event_id : "<none>", (int) strlen(data));
 }
 
+//TODO: transform data to json here?
+// seems that the on_sse_event is called in flush function after a
+// buffering period
+// call sequence: main -> sse_main -> http -> on_data callback -> parse_sse
 void on_sse_event(char** headers, const char* data, const char* reply_url)
 {
   log_sse_event(headers, data);
   
   char* result = 0;
   
+  json_t *root = NULL;
+  json_error_t error;
+  root = json_loads(data, 0, &error);
+  json_t *ticket;
+  ticket = json_object_get(root, "ticket");
+
+  if(!json_is_object(root))
+  {
+      fprintf(stderr, "error: data is not a json object\n");
+  }
+
+  const char *str;
+  str = json_string_value(ticket);
+  printf("ticket: %s\n", str);
+
   if(options.command) {
+    printf("IN IF\n");
     build_sse_environment(headers);
-    
+
     result = run_command(data, options.command, sse_environment);
     free_sse_environment();
   }

@@ -41,8 +41,9 @@ static const char* verify_sse_response(CURL* curl) {
 
 int sse_main(int argc, char** argv) 
 {
-  parse_arguments(argc, argv);
-
+  //parse_arguments(argc, argv);
+  options.allow_insecure = 1;
+  options.url = "http://localhost/~dsikich/stocks.php";
   /* == help needed? =============================================== */
   
   const char* headers[] = {
