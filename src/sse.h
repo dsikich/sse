@@ -36,6 +36,11 @@ struct Options {
   char       **command;       // command to run (if any)
 };
 
+struct MemoryStruct {
+  char *memory;
+  size_t size;
+};
+
 #define Options_Initializer {0,0,0,0,0,0,0,0}
 DECLARE_OBJECT(Options, options);
 

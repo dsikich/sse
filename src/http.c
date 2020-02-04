@@ -5,6 +5,7 @@
  * For more information see https://https://github.com/radiospiel/sse.
  */
  
+#include <jansson.h>
 #include "http.h"
 #include "sse.h"
 
@@ -119,7 +120,7 @@ static CURL* curl_handle(int index) {
 
   /* === verbosity? ================================================ */
 
-  curl_easy_setopt(curl, CURLOPT_VERBOSE, options.verbosity >= 1 ? 1 : 0);
+  curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
 
   /* === set defaults ============================================== */
 
@@ -142,7 +143,8 @@ static CURL* curl_handle(int index) {
    * in the default bundle, then the CURLOPT_CAPATH option might come 
    * handy for you.
    */ 
-  curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, options.allow_insecure ? 0L : 1L);
+  //curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, options.allow_insecure ? 0L : 1L);
+  curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
 
   /*
    * If the site you're connecting to uses a different host name that 
@@ -150,18 +152,20 @@ static CURL* curl_handle(int index) {
    * (or subjectAltName) fields, libcurl will refuse to connect. You can 
    * skip this check, but this will make the connection less secure.
    */ 
-  curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, options.allow_insecure ? 0L : 1L);
+  //curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, options.allow_insecure ? 0L : 1L);
+  curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
 
   /* === set certificates? ========================================= */
   
   /*
    * Did the user request a specific set of certifications?
    */
-  if(options.ssl_cert)
+  /*if(options.ssl_cert)
     curl_easy_setopt(curl, CURLOPT_SSLCERT, options.ssl_cert);
   
   if(options.ca_info) 
     curl_easy_setopt(curl, CURLOPT_CAINFO, options.ca_info);
+  */
   
   return curl;
 }
@@ -182,12 +186,25 @@ extern void http(int verb,
   const char*   (*on_verify)(CURL* curl)
 )
 {
+  struct MemoryStruct chunk;
+
+  /* will be grown as needed by the realloc above */ 
+  chunk.memory = malloc(1);
+
+  /* no data at this point */
+  chunk.size = 0;
+
+  /* init curl handle */
   CURL *curl = curl_handle(verb);
 
   // -- set URL -------------------------------------------------------
   
   curl_easy_setopt(curl, CURLOPT_URL, url);
 
+  // -- enable all supported built-in compressions  -------------------
+
+  curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");
+  
   // -- set headers ---------------------------------------------------
   
   struct curl_slist *headers = NULL;
@@ -221,17 +238,21 @@ extern void http(int verb,
   
   // -- set write function --------------------------------------------
   
-  if(on_data)
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, on_data);
+  //if(on_data)
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, on_data);
+
+  /* we pass our 'chunk' struct to the callback function */
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
   
   // -- perform -------------------------------------------------------
   
-  curl_perform(curl);         /* Perform the request */ 
+  /* Perform the request */ 
+  curl_perform(curl);
 
   // -- log CURL result -----------------------------------------------
 
-  if(options.verbosity >= 2)
-    curl_log_result(curl);
+  /*if(options.verbosity >= 2)
+    curl_log_result(curl);*/
 
   // -- verify status code --------------------------------------------
 
@@ -257,12 +278,42 @@ extern void http(int verb,
     fprintf(stderr, "%s: %s\n", effective_url, verification_error);
     exit(1);
   }
+
+  json_t *root = NULL;
+  json_error_t error;
+  root = json_loads(chunk.memory, 0, &error);
+  //root2 = json_loads(data, 0, &error);
+  json_t *metrics;
+  json_t *messages;
+  //arr_data = json_array_get(root1, 0);
+  metrics  = json_object_get(root, "metrics");
+  messages = json_array_get(metrics, 0);
+
+  if(!json_is_object(metrics))
+  {
+      fprintf(stderr, "error: metrics is not a json object\n");
+  }
+
+  if(!json_is_array(messages))
+  {
+      fprintf(stderr, "error: data is not a json array\n");
+  }
   
+  /*
+  * Now, our chunk.memory points to a memory block that is chunk.size
+  * bytes big and contains the remote file.
+  *
+  * Do something nice with it!
+  */
+  printf("%s string retrieved\n", chunk.memory);
+  printf("%lu bytes retrieved\n", (unsigned long)chunk.size);
+
   // -- cleanup -------------------------------------------------------
   
   if(headers)
     curl_slist_free_all(headers);
 
-  // We don't clean up.
-  // curl_easy_cleanup(curl);    /* cleanup */
+  /* cleanup */
+  curl_easy_cleanup(curl);
+  free(chunk.memory);
 }

@@ -95,27 +95,37 @@ void log_sse_event(char** headers, const char* data)
 // call sequence: main -> sse_main -> http -> on_data callback -> parse_sse
 void on_sse_event(char** headers, const char* data, const char* reply_url)
 {
-  log_sse_event(headers, data);
+  //log_sse_event(headers, data);
   
   char* result = 0;
   
   json_t *root = NULL;
   json_error_t error;
   root = json_loads(data, 0, &error);
-  json_t *ticket;
-  ticket = json_object_get(root, "ticket");
+  //root2 = json_loads(data, 0, &error);
+  json_t *metrics;
+  json_t *messages;
+  //arr_data = json_array_get(root1, 0);
+  metrics  = json_object_get(root, "metrics");
+  messages = json_array_get(metrics, 0);
 
-  if(!json_is_object(root))
+  if(!json_is_object(metrics))
   {
-      fprintf(stderr, "error: data is not a json object\n");
+      fprintf(stderr, "error: metrics is not a json object\n");
   }
 
-  const char *str;
-  str = json_string_value(ticket);
-  printf("ticket: %s\n", str);
+  if(!json_is_array(messages))
+  {
+      fprintf(stderr, "error: data is not a json array\n");
+  }
+
+
+  //const char *str;
+  //str = json_string_value(metrics);
+  //printf("metrics: %s\n", str);
+
 
   if(options.command) {
-    printf("IN IF\n");
     build_sse_environment(headers);
 
     result = run_command(data, options.command, sse_environment);
