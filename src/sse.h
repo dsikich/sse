@@ -33,7 +33,6 @@ struct Options {
   int         allow_insecure; // allow insecure connections
   const char *ssl_cert;       // SSL cert file
   const char *ca_info;        // CA cert file
-  char       **command;       // command to run (if any)
 };
 
 struct MemoryStruct {
@@ -41,7 +40,7 @@ struct MemoryStruct {
   size_t size;
 };
 
-#define Options_Initializer {0,0,0,0,0,0,0,0}
+#define Options_Initializer {0,0,0,0,0,0,0}
 DECLARE_OBJECT(Options, options);
 
 #define FD_STDIN    0
@@ -52,6 +51,11 @@ DECLARE_OBJECT(Options, options);
  * put some data into the SSE parser
  */
 extern void parse_sse(char *ptr, size_t size);
+
+/*
+ * parse and convert to json.
+ */
+extern void parse_json(const char* data);
 
 /*
  * Callback for SSE events.

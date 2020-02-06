@@ -5,6 +5,7 @@
  * For more information see https://https://github.com/radiospiel/sse.
  */
 
+#include <regex.h>
 #include "sse.h"
 #include "http.h"
 
@@ -16,28 +17,11 @@
  */
 static void parse_arguments(int argc, char** argv);
 
-static size_t on_data(char *contents, size_t size, size_t nmemb, void *userdata)
-{
-  size_t realsize = size * nmemb;
-  struct MemoryStruct *mem = (struct MemoryStruct *)userdata;
- 
-  char *ptr = realloc(mem->memory, mem->size + realsize + 1);
-  if(ptr == NULL) {
-    /* out of memory! */ 
-    printf("not enough memory (realloc returned NULL)\n");
-    return 0;
-  }
- 
-  mem->memory = ptr;
-  memcpy(&(mem->memory[mem->size]), contents, realsize);
-  mem->size += realsize;
-  mem->memory[mem->size] = 0;
- 
-  return realsize;
-  //logger(2, ptr, size * nmemb, 0);
-  //parse_sse(ptr, size * nmemb);
-  //return size * nmemb;
-}
+static size_t on_data(char *ptr, size_t size, size_t nmemb, void *userdata)
+{  
+  parse_sse(ptr, size * nmemb);
+  return size * nmemb;
+} 
 
 static const char* verify_sse_response(CURL* curl) {
   #define EXPECTED_CONTENT_TYPE "text/event-stream"
@@ -56,18 +40,15 @@ static const char* verify_sse_response(CURL* curl) {
 
 int sse_main(int argc, char** argv) 
 {
-  //parse_arguments(argc, argv);
-  options.allow_insecure = 1;
-  //options.url = "http://localhost/~dsikich/stocks.php";
-  options.url = "https://10.25.24.156:8080/v1/stream/cray-logs-containers?batchsize=4&count=2&streamID=stream1";
-  //options.url = "https://10.25.24.156:8080/v1/stream/cray-logs-containers";
-  /* == help needed? =============================================== */
-  
+  /* pass in arguments that will be used in REST call/connection*/
+  parse_arguments(argc, argv);
+
   const char* headers[] = {
     "Accept: text/event-stream",
     NULL
   };
-  
+
+  /* calls libcurl */
   http(HTTP_GET, options.url, headers, 0, 0, on_data, verify_sse_response);
   return 0;
 }
@@ -106,6 +87,11 @@ static void usage() {
 
 static void parse_arguments(int argc, char** argv)
 {
+  /* set default url and allow_insecure is always set to true for now */
+  options.allow_insecure = 1;
+  options.url = "https://10.25.24.156:8080/v1/stream/cray-logs-containers?batchsize=4&count=2&streamID=stream1";
+  //options.url = "https://10.25.24.156:8080/v1/stream/cray-logs-containers";
+    
   while(1) {
     int ch = getopt(argc, argv, "vic:a:l:?h");
     if(ch == -1) break;
@@ -130,10 +116,6 @@ static void parse_arguments(int argc, char** argv)
     options.url = *argv++;
   }
   
-  if(*argv) {
-    options.command = argv;
-  }
-
   if(!options.url)
     usage();
     

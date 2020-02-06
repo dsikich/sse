@@ -503,13 +503,14 @@ static void set_reply_url(const char* url) {
  */ 
 static void data_add(const char* string)
 {
-  size_t new_len = (data_buf ? strlen(data_buf) : 0) + strlen(string) + 1;
-
-  data_buf = realloc(data_buf, new_len + 1);
-  strcat(data_buf, "\n");
-  strcat(data_buf, string);
-  
-  data = data_buf;
+  /* NOTE: changing length was causing libcurl to crash, and data
+   * had undefined characters */
+  //size_t new_len = (data_buf ? strlen(data_buf) : 0) + strlen(string);
+  //data_buf = realloc(data_buf, new_len);
+  //strcat(data_buf, "\n");
+  //strcat(data_buf, string);
+  //data = data_buf;
+  data = string;
 }
 
 static void data_reset()
@@ -1293,7 +1294,6 @@ static int yy_get_next_buffer (void)
 #else
     static int input  (void)
 #endif
-
 {
 	int c;
     
@@ -1923,8 +1923,9 @@ void yyfree (void * ptr )
  */
 void parse_sse(char *ptr, size_t size) {
   (void)yyunput;
-  
-  YY_BUFFER_STATE buffer = yy_scan_bytes(ptr,size);
+
+
+  YY_BUFFER_STATE buffer = yy_scan_bytes(ptr, size);
   while(yylex());
   yy_delete_buffer(buffer);
 }

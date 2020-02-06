@@ -24,30 +24,6 @@ static int execvpe(const char *program, char **argv, char **envp)
 
 #endif
 
-static char* sse_environment[MAX_HEADERS];
-
-/*
- * copy headers into sse_environment and prefix those with SSE_.
- */
-static void build_sse_environment(char** headers)
-{
-  char** destHeader = sse_environment;
-
-  while(*headers) {
-    *destHeader = malloc(strlen(*headers) + 4);
-    strcpy(*destHeader, "SSE_");
-    strcat(*destHeader, *headers);
-
-    headers++, destHeader++;
-  }
-
-  *destHeader = 0;
-}
-
-/*
- * print sse environment.
- */
-
 void fprint_list(FILE* out, char** h)
 {
   while(*h) {
@@ -55,23 +31,6 @@ void fprint_list(FILE* out, char** h)
     fputs("\n", out);
   }
 }
-
-/*
- * free sse environment.
- */
-static void free_sse_environment()
-{
-  char* const* h = sse_environment;
-
-  while(*h) {
-    free(*h);
-    ++h;
-  }
-  
-  sse_environment[0] = 0;
-}
-
-static char* run_command(const char* data, char** command, char** environment);
 
 void log_sse_event(char** headers, const char* data)
 {
@@ -89,55 +48,59 @@ void log_sse_event(char** headers, const char* data)
                       event_id ? event_id : "<none>", (int) strlen(data));
 }
 
-//TODO: transform data to json here?
-// seems that the on_sse_event is called in flush function after a
-// buffering period
-// call sequence: main -> sse_main -> http -> on_data callback -> parse_sse
-void on_sse_event(char** headers, const char* data, const char* reply_url)
+void parse_json(const char* data)
 {
-  //log_sse_event(headers, data);
-  
-  char* result = 0;
-  
   json_t *root = NULL;
   json_error_t error;
   root = json_loads(data, 0, &error);
-  //root2 = json_loads(data, 0, &error);
   json_t *metrics;
   json_t *messages;
-  //arr_data = json_array_get(root1, 0);
-  metrics  = json_object_get(root, "metrics");
-  messages = json_array_get(metrics, 0);
+  json_t *msg_array_0;
+  json_t *msg;
+  const char *msg_str;
 
+  metrics  = json_object_get(root, "metrics");
   if(!json_is_object(metrics))
   {
       fprintf(stderr, "error: metrics is not a json object\n");
   }
 
+  messages = json_object_get(metrics, "messages");
   if(!json_is_array(messages))
   {
-      fprintf(stderr, "error: data is not a json array\n");
+      fprintf(stderr, "error: messages is not a json array\n");
   }
+  msg_array_0 = json_array_get(messages, 0);
 
-
-  //const char *str;
-  //str = json_string_value(metrics);
-  //printf("metrics: %s\n", str);
-
-
-  if(options.command) {
-    build_sse_environment(headers);
-
-    result = run_command(data, options.command, sse_environment);
-    free_sse_environment();
+  if(!json_is_object(msg_array_0))
+  {
+      fprintf(stderr, "error: first element of messages is not a json object\n");
   }
-  else {
-    fprint_list(stdout, headers);
-    fputs(data, stdout);
-    fputs("\n\n", stdout);
-  }
+  msg = json_object_get(msg_array_0, "message");
+
+  /* now print the first element of the messages array as a string */
+  msg_str = json_string_value(msg);
+  printf("message: %s\n", msg_str);
+}
+
+//TODO: transform data to json here?
+// seems that the on_sse_event is called in flush function after a
+// buffering and parsing period with flex
+// call sequence: main -> sse_main -> http -> on_data callback -> parse_sse
+void on_sse_event(char** headers, const char* data, const char* reply_url)
+{
+  char* result = 0;
+  
+  /* print out parsed data -- NOT JSON yet */
+  fprint_list(stdout, headers);
+  fputs(data, stdout);
+  fputs("\n\n", stdout);
+
+  /* example of parsing and converting to json */
+  parse_json(data);
 
   if(reply_url) {
+    printf("REPLY URL\n");
     char* body = result ? result : "";
     const char* reply_headers[] = {
       "Content-Type:",
@@ -149,68 +112,6 @@ void on_sse_event(char** headers, const char* data, const char* reply_url)
   }
 
   free(result);
-  
-  if(options.limit && 0 == --options.limit) {
-    exit(0);
-  }
-}
-
-/*
- * Run \a command, with the given \a environment, pass in \a data 
- * into the subprocess' STDIN, and return the subprocess' STDOUT.
- *
- * Make sure to free the returned memory.
- */
-static char* run_command(const char* data, char** command, char** environment)
-{
-  // Build pipes for subprocess
-  int pipe_to_child[2];
-  if (pipe(pipe_to_child) != 0) die("pipe");
-
-  int pipe_from_child[2];
-  if (pipe(pipe_from_child) != 0) die("pipe");
-  
-  // Start subprocess
-  pid_t pid = fork();
-  if (pid == -1) die("fork");
-  
-  char* read_data = 0;
-  
-  if (pid == 0) { /* the child */
-    dup2(pipe_to_child[FD_STDIN], FD_STDIN);
-    close(pipe_to_child[FD_STDOUT]);
-    
-    dup2(pipe_from_child[FD_STDOUT], FD_STDOUT);
-    close(pipe_from_child[FD_STDIN]);
-
-    char* ret;
-    asprintf(&ret, "Running %s\n", command[0]);
-    logger(1, ret, 0, 0);
-    free(ret);
-    
-    execvpe(command[0], command, environment);
-    _die(command[0]);  /* die via _exit: a failed child should not flush parent files */
-  }
-  else { /* code for parent */ 
-    close(pipe_to_child[FD_STDIN]);
-    write_all(pipe_to_child[FD_STDOUT], data, strlen(data));
-    close(pipe_to_child[FD_STDOUT]);
-
-    close(pipe_from_child[FD_STDOUT]);
-    read_all(pipe_from_child[FD_STDIN], &read_data, RESPONSE_LIMIT);
-    close(pipe_from_child[FD_STDIN]);
-
-    int status = 0;
-    waitpid(pid, &status, 0);
-    
-    // Show results if something broke.
-    if(WIFEXITED(status) && WEXITSTATUS(status) != 0)
-      fprintf(stderr, "child exited with stats %d\n", WEXITSTATUS(status));
-    else if(WIFSIGNALED(status))
-      fprintf(stderr, "child exited of signal %d\n", WTERMSIG(status));
-  }
-  
-  return read_data;
 }
 
 /*
